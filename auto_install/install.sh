@@ -3159,9 +3159,10 @@ and HMAC key will now be generated." \
   fi
 
   # Increase minimum TLS version to limit ciphersuites reducing attack surface
+  # (the client template gets the same change in confOVPN, on its installed
+  # copy, so the git checkout in ${pivpnFilesDir} stays clean for updates)
   if [[ "${pivpnTLSVERS}" == "1.3" ]]; then
     ${SUDO} sed -i "s|tls-version-min 1.2|tls-version-min 1.3|" "/etc/openvpn/server.conf"
-    ${SUDO} sed -i "s|tls-version-min 1.2|tls-version-min 1.3|" "${pivpnFilesDir}/files/etc/openvpn/easy-rsa/pki/Default.txt"
   fi
 
   # if they modified VPN network put value in server.conf
@@ -3246,6 +3247,12 @@ confOVPN() {
     # If they enabled 2.5 remove key-direction options since it's not required
     ${SUDO} sed -i \
       "/key-direction 1/d" \
+      /etc/openvpn/easy-rsa/pki/Default.txt
+  fi
+
+  if [[ "${pivpnTLSVERS}" == "1.3" ]]; then
+    ${SUDO} sed -i \
+      "s|tls-version-min 1.2|tls-version-min 1.3|" \
       /etc/openvpn/easy-rsa/pki/Default.txt
   fi
 

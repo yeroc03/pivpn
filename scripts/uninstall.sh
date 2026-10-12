@@ -320,9 +320,8 @@ removeAll() {
 
   echo ":::"
   printf "::: Finished removing PiVPN from your system.\\n"
-  printf "::: Reinstall by simply running\\n:::\\n:::\\t"
-  printf "curl -sSfL https://raw.githubusercontent.com/yeroc03/pivpn/master/"
-  printf "auto_install/install.sh | bash\\n:::\\n::: at any time!\\n:::\\n"
+  printf "::: Reinstall at any time by running ./install.sh in your PiVPN\\n"
+  printf "::: repository (see INSTALL.md there).\\n:::\\n"
 }
 
 askreboot() {

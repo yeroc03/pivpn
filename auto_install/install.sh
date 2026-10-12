@@ -5,19 +5,32 @@
 # Heavily adapted from the pi-hole.net project and...
 # https://github.com/StarshipEngineer/OpenVPN-Setup/
 #
-# Install with this command (from your Pi):
-#
-# curl -sSfL https://raw.githubusercontent.com/yeroc03/pivpn/master/auto_install/install.sh | bash
-# Make sure you have `curl` installed
-#
 # This is the yeroc03/pivpn fork of https://github.com/pivpn/pivpn; see
-# FORK-CHANGES.md. The scripts are cloned from pivpnGitUrl below (override
-# with --giturl/--gitbranch), so this installer installs the fork's scripts.
+# FORK-CHANGES.md for what it changes and INSTALL.md for how to install it.
+#
+# Two ways to run this installer:
+#   - From a clone of the repository: run ./install.sh in its top folder.
+#     The PiVPN scripts are installed from that clone; no network git server
+#     is involved and pivpnGitUrl below is not used.
+#   - On its own (downloaded, or piped from curl): the PiVPN scripts are
+#     cloned from pivpnGitUrl below.
+# Make sure you have `curl` installed
 
 ######## VARIABLES #########
-pivpnGitUrl="https://github.com/yeroc03/pivpn.git"
-# Uncomment to checkout a custom branch for local pivpn files
-#pivpnGitBranch="custombranchtocheckout"
+# Repository the PiVPN scripts are cloned from when this installer is not run
+# from a clone. Override with --giturl/--gitbranch or the PIVPN_GIT_URL and
+# PIVPN_GIT_BRANCH environment variables (either one also makes a run from a
+# clone use that repository instead of the clone).
+pivpnGitUrl="${PIVPN_GIT_URL:-https://github.com/yeroc03/pivpn.git}"
+pivpnGitBranch="${PIVPN_GIT_BRANCH:-}"
+if [[ -n "${PIVPN_GIT_URL}" ]]; then
+  gitUrlExplicit=1
+fi
+
+# Set when this installer runs from a clone of the repository
+localRepoDir=""
+localUploadPack=""
+gitCloneOpts=()
 setupVarsFile="setupVars.conf"
 setupConfigDir="/etc/pivpn"
 # Use mktemp for secure temp file creation (prevents TOCTOU race conditions)
@@ -118,6 +131,12 @@ main() {
   # flagsCheck first: distroCheck reads runUnattended when the OS is untested,
   # and rootCheck reads the package manager distroCheck picks.
   flagsCheck "$@"
+
+  # Install from the clone this installer lives in, unless told otherwise
+  if [[ -z "${gitUrlExplicit}" ]]; then
+    detectLocalRepo
+  fi
+
   distroCheck
   rootCheck
   unattendedCheck
@@ -251,6 +270,7 @@ flagsCheck() {
         ;;
       "--giturl")
         pivpnGitUrl="${!j}"
+        gitUrlExplicit=1
         ;;
       "--gitbranch")
         pivpnGitBranch="${!j}"
@@ -554,7 +574,7 @@ verifyFreeDiskSpace() {
     err "::: You only have ${existing_free_kilobytes} KiloBytes free."
     err "::: If this is a new install on a Raspberry Pi you may need to expand your disk."
     err "::: Try running 'sudo raspi-config', and choose the 'expand file system option'"
-    err "::: After rebooting, run this installation again. (curl -sSfL https://raw.githubusercontent.com/yeroc03/pivpn/master/auto_install/install.sh | bash)"
+    err "::: After rebooting, run this installation again (see INSTALL.md)."
     err "Insufficient free space, exiting..."
     exit 1
   fi
@@ -1632,6 +1652,7 @@ updateRepo() {
       && ${SUDO} ${GITBIN} clone -q \
         --depth 1 \
         --no-single-branch \
+        "${gitCloneOpts[@]}" \
         "${2}" \
         "${1}" \
         > /dev/null &
@@ -1669,6 +1690,7 @@ makeRepo() {
     && ${SUDO} ${GITBIN} clone -q \
       --depth 1 \
       --no-single-branch \
+      "${gitCloneOpts[@]}" \
       "${2}" \
       "${1}" \
       > /dev/null &
@@ -1701,10 +1723,119 @@ getGitFiles() {
   fi
 }
 
+# If this installer was started from a clone of the repository (not piped
+# from curl, not a lone downloaded copy), remember the clone's top folder.
+detectLocalRepo() {
+  local self topDir
+
+  # Piped into bash ('curl ... | bash') there is no file to look at
+  [[ -f "${BASH_SOURCE[0]}" ]] || return 1
+
+  self="$(readlink -f "${BASH_SOURCE[0]}")"
+  topDir="$(dirname "$(dirname "${self}")")"
+
+  if [[ "${self}" == "${topDir}/auto_install/install.sh" ]] \
+    && [[ -e "${topDir}/.git" ]] \
+    && [[ -f "${topDir}/scripts/pivpn" ]] \
+    && [[ -f "${topDir}/files/etc/openvpn/server_config.txt" ]]; then
+    localRepoDir="${topDir}"
+    return 0
+  fi
+
+  return 1
+}
+
+# git, run as the current user, in the clone this installer came from
+localRepoGit() {
+  ${GITBIN} -c safe.directory="${localRepoDir}" -C "${localRepoDir}" "$@"
+}
+
+# Install the PiVPN scripts from the local clone instead of pivpnGitUrl
+useLocalRepo() {
+  local installedOrigin uncommitted line
+
+  # Started from the installed copy itself (/usr/local/src/pivpn), which is
+  # about to be replaced: install from wherever that copy came from instead.
+  if [[ "$(readlink -f "${localRepoDir}")" == "$(readlink -f "${pivpnFilesDir}")" ]]; then
+    installedOrigin="$(${GITBIN} config \
+      --file "${pivpnFilesDir}/.git/config" --get remote.origin.url)"
+
+    case "${installedOrigin}" in
+      file://*)
+        localRepoDir="${installedOrigin#file://}"
+        ;;
+      /*)
+        localRepoDir="${installedOrigin}"
+        ;;
+      "")
+        err "::: ${pivpnFilesDir} has no origin to reinstall from, run the installer from your clone"
+        exit 1
+        ;;
+      *)
+        localRepoDir=""
+        pivpnGitUrl="${installedOrigin}"
+        echo "::: Installing the PiVPN scripts from ${pivpnGitUrl}"
+        return 0
+        ;;
+    esac
+
+    if [[ ! -d "${localRepoDir}" ]]; then
+      err "::: ${pivpnFilesDir} was installed from ${localRepoDir}, which no longer exists"
+      err "::: Run the installer from your clone, or pass --giturl <repository>"
+      exit 1
+    fi
+  fi
+
+  if [[ "${localRepoDir}" == *"'"* ]]; then
+    err "::: The path of your clone must not contain a single quote: ${localRepoDir}"
+    exit 1
+  fi
+
+  # The clone is read by root (sudo) but usually owned by you, which git
+  # refuses ("dubious ownership") unless told that this one repository is
+  # fine. Command-line config doesn't reach the upload-pack side of a local
+  # clone, so pass the exception to upload-pack itself.
+  localUploadPack="git -c safe.directory='${localRepoDir}/.git' upload-pack"
+  gitCloneOpts=(--upload-pack "${localUploadPack}")
+  # file:// so the clone can be shallow, like a clone from a server
+  pivpnGitUrl="file://${localRepoDir}"
+
+  echo "::: Installing the PiVPN scripts from your clone in ${localRepoDir}"
+  echo ":::   branch $(localRepoGit rev-parse --abbrev-ref HEAD)," \
+    "commit $(localRepoGit log -1 --format='%h %s')"
+
+  uncommitted="$(localRepoGit status --porcelain --untracked-files=no)"
+
+  if [[ -n "${uncommitted}" ]]; then
+    echo "::: WARNING: these uncommitted changes in ${localRepoDir} will NOT be"
+    echo ":::          installed (the last commit is); commit them first to include them:"
+    while IFS= read -r line; do
+      echo ":::            ${line}"
+    done <<< "${uncommitted}"
+
+    if [[ "${runUnattended}" != 'true' ]] \
+      && ! whiptail \
+        --backtitle "Local clone" \
+        --title "Uncommitted changes" \
+        --yesno "${localRepoDir} has uncommitted changes. Only its last commit \
+will be installed.
+
+Continue anyway?" "${r}" "${c}"; then
+      err "::: Cancelled, commit your changes and run the installer again"
+      exit 1
+    fi
+  fi
+}
+
 cloneOrUpdateRepos() {
   # Clone/Update the repos
   # /usr/local should always exist, not sure about the src subfolder though
   ${SUDO} mkdir -p /usr/local/src
+
+  # (A repair reuses the installed copy and clones nothing)
+  if [[ -n "${localRepoDir}" ]] && [[ "${UpdateCmd}" != "Repair" ]]; then
+    useLocalRepo
+  fi
 
   # Get Git files
   getGitFiles "${pivpnFilesDir}" "${pivpnGitUrl}" \
@@ -1712,6 +1843,13 @@ cloneOrUpdateRepos() {
       err "!!! Unable to clone ${pivpnGitUrl} into ${pivpnFilesDir}, unable to continue."
       exit 1
     }
+
+  # 'pivpn update' fetches from the same clone later, as root: keep the
+  # ownership exception for it in the installed copy's git config
+  if [[ -n "${localUploadPack}" ]]; then
+    ${SUDO} ${GITBIN} -C "${pivpnFilesDir}" \
+      config remote.origin.uploadpack "${localUploadPack}"
+  fi
 }
 
 installPiVPN() {

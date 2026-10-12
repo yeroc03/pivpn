@@ -19,20 +19,20 @@ OpenVPN-specific ones again against Ubuntu 26.04's OpenVPN 2.7.0 build; see
 
 | # | Problem | Who hits it | Effect | Fixed in |
 |---|---|---|---|---|
-| A | EasyRSA extraction fails with GNU tar 1.35 | Every new OpenVPN install | Install aborts | upstream `5ce09ed` (cherry-picked) + `cfa5849` |
+| A | EasyRSA extraction fails with GNU tar 1.35 | Every new OpenVPN install | Install aborts | upstream `5ce09ed` (cherry-picked) + `643da7e` |
 | B | Server and profiles pin `cipher AES-256-CBC` | OpenVPN 2.6+, NetworkManager clients | NM clients rejected | `9225d72` |
-| 1 | `pivpn revoke` makes the CRL unreadable | OpenVPN, after the first revoke | **All clients refused** until a restart | `b45ce24` |
+| 1 | `pivpn revoke` makes the CRL unreadable | OpenVPN, after the first revoke | **All clients refused** until a restart | `2d9beb1` |
 | 2 | sudo-rs drops the server certificate lifetime | Ubuntu 25.10+/26.04, installer run as a normal user | Server cert expires after 825 days, not 10 years | `eb0c01e` |
-| 3 | `pivpn add -o` re-registers the client | OpenVPN | Client IP changes, duplicate config lines, new key | `43f8d74` |
-| 4 | `pivpn -d` checks the wrong OpenVPN unit | OpenVPN on Debian/Ubuntu | Crashed server reported as running | `4d5cb01` |
-| 5 | Installer steps race each other without a terminal | cloud-init, `ssh host bash`, CI | apt lock errors, wrong branch checked out | `44e3960` |
+| 3 | `pivpn add -o` re-registers the client | OpenVPN | Client IP changes, duplicate config lines, new key | `0e39323` |
+| 4 | `pivpn -d` checks the wrong OpenVPN unit | OpenVPN on Debian/Ubuntu | Crashed server reported as running | `b203fd7` |
+| 5 | Installer steps race each other without a terminal | cloud-init, `ssh host bash`, CI | apt lock errors, wrong branch checked out | `9e51938` |
 | 6 | Installer edits its own git checkout | OpenVPN 2.5 mode (the default) | Breaks later updates of the checkout | `d1590c5` |
 | 7 | Ubuntu 26.04 treated as untested | Ubuntu 26.04 | "Untested OS" stop | `2d7b080` |
-| 8 | `pivpn update` does nothing | Everyone | No way to update the scripts | `5dcf378` |
-| 9 | EasyRSA download unverified, every failure reported as "download" | Every OpenVPN install | Misleading errors, no integrity check | `cfa5849` |
-| 10 | A fork's installer installs upstream's scripts | Anyone installing from a fork | Fork fixes silently not installed | `bedb355` |
-| 11 | Small script bugs | Edge cases | See below | `43f8d74`, `1f55263` |
-| 12 | CI | Fork maintenance | Travis is gone; release jobs would run on the fork | `ee30f87` |
+| 8 | `pivpn update` does nothing | Everyone | No way to update the scripts | `dbdda10` |
+| 9 | EasyRSA download unverified, every failure reported as "download" | Every OpenVPN install | Misleading errors, no integrity check | `643da7e` |
+| 10 | A fork's installer installs upstream's scripts | Anyone installing from a fork | Fork fixes silently not installed | `3607bf4` |
+| 11 | Small script bugs, temp files left in `/tmp` | Edge cases | See below | `0e39323`, `ae50822`, `deacd94` |
+| 12 | CI | Fork maintenance | Travis is gone; release jobs would run on the fork | `0fd1373` |
 
 A and B are the two problems already written up in this project
 (`pivpn-easyrsa-tar-fix.md`, `pivpn-openvpn-cipher-fix.md`). Everything from 1
@@ -186,8 +186,11 @@ only reach new installs and new or regenerated profiles.
 ### 9. EasyRSA download: no integrity check, one error for everything
 
 `curl | tar` meant a failed download, a corrupted file and the tar bug (A) all
-surfaced as "Failed to download EasyRSA". The tarball is now downloaded to a
-temporary file, checked against a pinned SHA-256
+surfaced as "Failed to download EasyRSA". Worse, by then the installer had
+already deleted the existing `server.conf`, `ccd/` and `easy-rsa/` (they are in
+the `/etc/openvpn_<date>.tar.gz` backup, but the server is down). The tarball
+is now downloaded first, before anything is removed, to a temporary file,
+checked against a pinned SHA-256
 (`577d9a0f…cd851e3`, EasyRSA-3.2.3.tgz as served by the OpenVPN GitHub
 release), extracted, and each step has its own error. Set `easyrsaSha256=""`
 in `install.sh` to skip the check when trying another EasyRSA version.
@@ -207,6 +210,8 @@ hints in the installer, the uninstaller and the README.
   `PASSWD_UNESCAPED` for the key password; the "certificate/key not found"
   errors exited with status 0.
 - `makeCONF.sh`: `read` without `-r` (shellcheck SC2162).
+- `install.sh` left its temporary setupVars file in `/tmp` on every run, plus an
+  empty root-owned "APT log" file per package batch that nothing wrote to.
 - Tab-indented Alpine blocks in `install.sh` and `TLSCryptV2Verify.sh`
   reformatted with the project's `shfmt -i 2 -ci -sr -bn`, so the tree lints
   clean.

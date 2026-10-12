@@ -34,7 +34,12 @@ if [[ "${VPN}" == "wireguard" ]]; then
 elif [[ "${VPN}" == "openvpn" ]]; then
   VPN_SERVICE="openvpn"
   VPN_PRETTY_NAME="OpenVPN"
+  # On Debian/Ubuntu 'openvpn.service' is a placeholder that stays "active"
+  # even when the real server instance has failed, so check the instance.
+  VPN_INSTANCE="openvpn@server"
 fi
+
+VPN_ACTIVE_UNIT="${VPN_INSTANCE:-${VPN_SERVICE}}"
 
 if [[ "$(< /proc/sys/net/ipv4/ip_forward)" -eq 1 ]]; then
   echo ":: [OK] IP forwarding is enabled"
@@ -253,6 +258,24 @@ else
   fi
 fi
 
+if [[ "${VPN}" == "openvpn" ]] && [[ -f /etc/openvpn/crl.pem ]]; then
+  # OpenVPN drops privileges to 'openvpn' and re-reads the CRL whenever it
+  # changes; if it can't, every new connection is refused.
+  if [[ -n "$(find /etc/openvpn/crl.pem \( -user openvpn -o -perm -004 \))" ]]; then
+    echo ":: [OK] The CRL is readable by the openvpn user"
+  else
+    ERR=1
+    echo -n ":: [ERR] The CRL is not readable by the openvpn user, "
+    echo -n "attempt fix now? [Y/n] "
+    read -r REPLY
+
+    if [[ "${REPLY}" =~ ^[Yy]$ ]] || [[ -z "${REPLY}" ]]; then
+      chmod 0644 /etc/openvpn/crl.pem
+      echo "Done"
+    fi
+  fi
+fi
+
 if [[ "${PLAT}" == 'Alpine' ]]; then
   if [[ "$(rc-service "${VPN_SERVICE}" status \
     | sed -E -e 's/.*status\: (.*)/\1/')" == 'started' ]]; then
@@ -286,7 +309,7 @@ if [[ "${PLAT}" == 'Alpine' ]]; then
     fi
   fi
 else
-  if systemctl is-active -q "${VPN_SERVICE}"; then
+  if systemctl is-active -q "${VPN_ACTIVE_UNIT}"; then
     echo ":: [OK] ${VPN_PRETTY_NAME} is running"
   else
     ERR=1
@@ -295,7 +318,7 @@ else
     read -r REPLY
 
     if [[ "${REPLY}" =~ ^[Yy]$ ]] || [[ -z "${REPLY}" ]]; then
-      systemctl start "${VPN_SERVICE}"
+      systemctl restart "${VPN_ACTIVE_UNIT}"
       echo "Done"
     fi
   fi

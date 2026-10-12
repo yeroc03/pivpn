@@ -7,11 +7,15 @@
 #
 # Install with this command (from your Pi):
 #
-# curl -sSfL https://install.pivpn.io | bash
+# curl -sSfL https://raw.githubusercontent.com/yeroc03/pivpn/master/auto_install/install.sh | bash
 # Make sure you have `curl` installed
+#
+# This is the yeroc03/pivpn fork of https://github.com/pivpn/pivpn; see
+# FORK-CHANGES.md. The scripts are cloned from pivpnGitUrl below (override
+# with --giturl/--gitbranch), so this installer installs the fork's scripts.
 
 ######## VARIABLES #########
-pivpnGitUrl="https://github.com/pivpn/pivpn.git"
+pivpnGitUrl="https://github.com/yeroc03/pivpn.git"
 # Uncomment to checkout a custom branch for local pivpn files
 #pivpnGitBranch="custombranchtocheckout"
 setupVarsFile="setupVars.conf"
@@ -545,7 +549,7 @@ verifyFreeDiskSpace() {
     err "::: You only have ${existing_free_kilobytes} KiloBytes free."
     err "::: If this is a new install on a Raspberry Pi you may need to expand your disk."
     err "::: Try running 'sudo raspi-config', and choose the 'expand file system option'"
-    err "::: After rebooting, run this installation again. (curl -sSfL https://install.pivpn.io | bash)"
+    err "::: After rebooting, run this installation again. (curl -sSfL https://raw.githubusercontent.com/yeroc03/pivpn/master/auto_install/install.sh | bash)"
     err "Insufficient free space, exiting..."
     exit 1
   fi

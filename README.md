@@ -1,3 +1,15 @@
+> [!NOTE]
+> **This is the [yeroc03/pivpn](https://github.com/yeroc03/pivpn) fork of [pivpn/pivpn](https://github.com/pivpn/pivpn).**
+> It carries fixes for Ubuntu 24.04 / 26.04 LTS, OpenVPN 2.6 / 2.7 and NetworkManager clients
+> (listed in [FORK-CHANGES.md](FORK-CHANGES.md)), and its installer installs the fork's scripts:
+>
+> ```Shell
+> curl -sSfL https://raw.githubusercontent.com/yeroc03/pivpn/master/auto_install/install.sh -o pivpn-install.sh
+> bash pivpn-install.sh
+> ```
+>
+> Update an installed copy with `pivpn update` (or `pivpn wg update` / `pivpn ovpn update` with one protocol).
+
 > [!WARNING]
 > PiVPN is maintained on a best-effort basis, please read more about it [here](https://github.com/pivpn/pivpn/releases/tag/v4.6.1). Previous announcement is [here](https://github.com/pivpn/pivpn/releases/tag/v4.6.0).
 

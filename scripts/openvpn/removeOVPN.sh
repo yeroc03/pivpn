@@ -188,7 +188,11 @@ for ((ii = 0; ii < ${#CERTS_TO_REVOKE[@]}; ii++)); do
     # shellcheck disable=SC2154
     rm -rf "${install_home}/ovpns/${CERTS_TO_REVOKE[ii]}.ovpn"
     rm -rf "/etc/openvpn/easy-rsa/pki/${CERTS_TO_REVOKE[ii]}.ovpn"
-    cp -a /etc/openvpn/easy-rsa/pki/crl.pem /etc/openvpn/crl.pem
+    # OpenVPN re-reads the CRL as the unprivileged 'openvpn' user whenever
+    # it changes. 'cp -a' copied EasyRSA's root-owned 0600 mode along with
+    # it, so the reload failed and every new connection was refused. A CRL
+    # holds no secrets, so publish it world-readable.
+    install -m 0644 /etc/openvpn/easy-rsa/pki/crl.pem /etc/openvpn/crl.pem
 
     if [[ "${TWO_POINT_FIVE}" -eq 1 ]]; then
       # Delete client metadata to block authentication at the tls-crypt level

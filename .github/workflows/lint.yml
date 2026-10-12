@@ -24,9 +24,11 @@ jobs:
           shellcheck -x auto_install/install.sh
           find ciscripts/ -type f -regex '.*\.sh' -print0 | xargs -0 shellcheck -x
           find scripts/ -type f -print0 | xargs -0 shellcheck -x
+          shellcheck extras/proton-drive-sync/pivpn-proton-sync
 
       - name: Shell style (shfmt)
         run: |
           shfmt -d -i 2 -ci -sr -bn auto_install/install.sh
           find ciscripts/ -type f -regex '.*\.sh' -print0 | xargs -0 shfmt -d -i 2 -ci -sr -bn
           find scripts/ -type f -print0 | xargs -0 shfmt -d -i 2 -ci -sr -bn
+          shfmt -d -i 2 -ci -sr -bn extras/proton-drive-sync/pivpn-proton-sync

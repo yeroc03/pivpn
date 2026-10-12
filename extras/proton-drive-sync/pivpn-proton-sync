@@ -1,0 +1,142 @@
+#!/bin/bash
+# pivpn-proton-sync: mirror PiVPN client profiles to Proton Drive.
+#
+# Uploads every OpenVPN (.ovpn) and WireGuard (.conf) client profile from the
+# PiVPN user's folders to Proton Drive with the official 'proton-drive' CLI,
+# then moves to the Proton Drive trash any remote profile whose local file is
+# gone (a revoked or removed client). Unchanged files are skipped by the CLI,
+# so running it often costs nothing.
+#
+# Run it as the PiVPN install user (the owner of ~/ovpns and ~/configs), after
+# signing that user in once with 'proton-drive auth login'. See README.md.
+#
+# Settings (environment, or /etc/default/pivpn-proton-sync via systemd):
+#   PROTON_DRIVE_BIN        CLI to run              (default: proton-drive)
+#   PIVPN_SYNC_REMOTE       remote folder           (default: /my-files/PiVPN/<host>)
+#   PIVPN_SYNC_DIRS         local folders, space separated
+#                                                   (default: ~/ovpns ~/configs)
+#   PIVPN_SYNC_PRUNE        trash remote files with no local copy (default: 1)
+#   PROTON_DRIVE_CREDENTIALS_STORE  passed through to the CLI (e.g. pass)
+
+set -o nounset
+set -o pipefail
+
+PROTON_DRIVE_BIN="${PROTON_DRIVE_BIN:-proton-drive}"
+PIVPN_SYNC_REMOTE="${PIVPN_SYNC_REMOTE:-/my-files/PiVPN/$(hostname -s)}"
+PIVPN_SYNC_DIRS="${PIVPN_SYNC_DIRS:-${HOME}/ovpns ${HOME}/configs}"
+PIVPN_SYNC_PRUNE="${PIVPN_SYNC_PRUNE:-1}"
+
+log() {
+  echo "pivpn-proton-sync: $*"
+}
+
+die() {
+  echo "pivpn-proton-sync: ERROR: $*" >&2
+  exit 1
+}
+
+pd() {
+  "${PROTON_DRIVE_BIN}" "$@"
+}
+
+# Make sure a remote folder exists, creating missing parents one by one.
+ensureRemoteFolder() {
+  local path="${1%/}" parent name
+
+  if pd filesystem info "${path}" > /dev/null 2>&1; then
+    return 0
+  fi
+
+  parent="${path%/*}"
+  name="${path##*/}"
+
+  if [[ -z "${parent}" ]] || [[ "${parent}" == "/my-files" ]]; then
+    parent="/my-files"
+  else
+    ensureRemoteFolder "${parent}" || return 1
+  fi
+
+  log "creating ${path}"
+  pd filesystem create-folder "${parent}" "${name}" > /dev/null
+}
+
+# Print the names of the files directly inside a remote folder, one per line.
+remoteFileNames() {
+  pd filesystem list --json --type file "${1}" \
+    | jq -r '.[]
+      | select(.type == "file")
+      | if (.name | type) == "object"
+        then (if .name.ok then .name.value else empty end)
+        else .name end'
+}
+
+### Script
+command -v "${PROTON_DRIVE_BIN}" > /dev/null \
+  || die "'${PROTON_DRIVE_BIN}' not found (set PROTON_DRIVE_BIN)"
+command -v jq > /dev/null || die "jq is not installed"
+
+# Fail early, and clearly, when the stored session is gone
+if ! authCheck="$(pd filesystem info /my-files 2>&1)"; then
+  if grep -qi 'login' <<< "${authCheck}"; then
+    die "not signed in to Proton Drive: run 'proton-drive auth login' as ${USER:-$(id -un)}"
+  fi
+
+  die "Proton Drive is not reachable: ${authCheck}"
+fi
+
+ensureRemoteFolder "${PIVPN_SYNC_REMOTE}" \
+  || die "could not create ${PIVPN_SYNC_REMOTE}"
+
+uploads=()
+
+for dir in ${PIVPN_SYNC_DIRS}; do
+  if [[ -d "${dir}" ]]; then
+    uploads+=("${dir%/}")
+  else
+    log "skipping ${dir}: no such folder"
+  fi
+done
+
+if [[ "${#uploads[@]}" -eq 0 ]]; then
+  log "nothing to upload"
+  exit 0
+fi
+
+# Each local folder becomes a remote folder of the same name (ovpns, configs).
+# merge + create-new-revision: add new files, update changed ones, and let
+# the CLI skip files whose content is unchanged.
+log "uploading ${uploads[*]} to ${PIVPN_SYNC_REMOTE}"
+pd filesystem upload --json \
+  --folder-conflict-strategy merge \
+  --file-conflict-strategy create-new-revision \
+  --skip-thumbnails \
+  "${uploads[@]}" "${PIVPN_SYNC_REMOTE}" > /dev/null \
+  || die "upload failed"
+
+if [[ "${PIVPN_SYNC_PRUNE}" != "1" ]]; then
+  log "done (pruning disabled)"
+  exit 0
+fi
+
+# Only folders that exist locally are pruned (a missing folder was skipped
+# above), and trashed files stay recoverable from the Proton Drive trash.
+for dir in "${uploads[@]}"; do
+  remote="${PIVPN_SYNC_REMOTE}/${dir##*/}"
+
+  if ! names="$(remoteFileNames "${remote}")"; then
+    log "could not list ${remote}, not pruning it"
+    continue
+  fi
+
+  while IFS= read -r name; do
+    [[ -z "${name}" ]] && continue
+
+    if [[ ! -e "${dir}/${name}" ]]; then
+      log "trashing ${remote}/${name} (no local copy any more)"
+      pd filesystem trash "${remote}/${name//\//\\/}" > /dev/null \
+        || log "could not trash ${remote}/${name}"
+    fi
+  done <<< "${names}"
+done
+
+log "done"

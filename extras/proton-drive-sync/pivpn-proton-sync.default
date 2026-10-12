@@ -1,0 +1,16 @@
+# /etc/default/pivpn-proton-sync - settings for pivpn-proton-sync@<user>
+# Values are read literally by systemd (no shell expansion).
+
+# Remote folder that receives the 'ovpns' and 'configs' folders.
+# Default: /my-files/PiVPN/<short hostname>
+#PIVPN_SYNC_REMOTE=/my-files/PiVPN/pivpn
+
+# Local folders to mirror, space separated. Default: ~/ovpns ~/configs
+#PIVPN_SYNC_DIRS="/home/USER/ovpns /home/USER/configs"
+
+# 1 = move remote profiles with no local copy (revoked clients) to the
+# Proton Drive trash; 0 = only ever add and update.
+#PIVPN_SYNC_PRUNE=1
+
+# Path to the Proton Drive CLI.
+#PROTON_DRIVE_BIN=/usr/local/bin/proton-drive

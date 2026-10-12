@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily PiVPN profile sync to Proton Drive for %i
+Documentation=file:///usr/local/src/pivpn/extras/proton-drive-sync/README.md
+
+[Timer]
+# Catches anything the path unit missed and keeps the Proton session in use
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+Unit=pivpn-proton-sync@%i.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=Mirror the PiVPN client profiles of %i to Proton Drive
+Documentation=file:///usr/local/src/pivpn/extras/proton-drive-sync/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=%i
+# The session lives in the user's GPG-encrypted pass store (see README.md)
+Environment=PROTON_DRIVE_CREDENTIALS_STORE=pass
+EnvironmentFile=-/etc/default/pivpn-proton-sync
+# 'pivpn add' writes several files; let the burst settle before syncing
+ExecStartPre=/bin/sleep 10
+ExecStart=/usr/local/bin/pivpn-proton-sync
+Nice=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full

@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch the PiVPN client profiles of %i for changes
+Documentation=file:///usr/local/src/pivpn/extras/proton-drive-sync/README.md
+
+[Path]
+# PiVPN keeps OpenVPN profiles in ~/ovpns and WireGuard ones in ~/configs.
+# Both folders must exist before this unit starts.
+PathChanged=/home/%i/ovpns
+PathChanged=/home/%i/configs
+Unit=pivpn-proton-sync@%i.service
+
+[Install]
+WantedBy=paths.target

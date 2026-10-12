@@ -7,6 +7,8 @@ on:
 
 jobs:
   release:
+    # Upstream only: forks have no install.pivpn.io Pages site or release flow
+    if: github.repository == 'pivpn/pivpn'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.semrel.outputs.version }}

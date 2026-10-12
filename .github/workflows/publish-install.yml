@@ -24,6 +24,8 @@ concurrency:
 jobs:
   # Single deploy job since we're just deploying
   deploy:
+    # Upstream only: forks have no install.pivpn.io Pages site or release flow
+    if: github.repository == 'pivpn/pivpn'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

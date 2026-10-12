@@ -3248,6 +3248,16 @@ confOVPN() {
       "/key-direction 1/d" \
       /etc/openvpn/easy-rsa/pki/Default.txt
   fi
+
+  # 'data-ciphers' needs an OpenVPN 2.5+ client. The traditional (non-2.5)
+  # mode exists for older clients, so give those profiles a single AEAD
+  # 'cipher' instead: 2.4 clients understand it, the server accepts it, and
+  # NetworkManager turns it into '--data-ciphers AES-256-GCM'.
+  if [[ "${TWO_POINT_FIVE}" -ne 1 ]]; then
+    ${SUDO} sed -i \
+      "s|^data-ciphers .*|cipher AES-256-GCM|" \
+      /etc/openvpn/easy-rsa/pki/Default.txt
+  fi
 }
 
 confWireGuard() {

@@ -22,7 +22,9 @@ keepalive 15 120
 remote-cert-tls client
 tls-version-min 1.2
 tls-auth /etc/openvpn/easy-rsa/pki/ta.key 0
-cipher AES-256-CBC
+# OpenVPN 2.6+ negotiates the data channel cipher from this list and ignores
+# 'cipher'. AEAD ciphers only, so Linux kernel offload (DCO) stays available.
+data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305
 auth SHA256
 user openvpn
 group openvpn

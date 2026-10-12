@@ -209,7 +209,10 @@ rootCheck() {
     # If it isn't, exit because the install cannot complete
     if eval "${CHECK_PKG_INSTALLED} sudo" &> /dev/null; then
       export SUDO="sudo"
-      export SUDOE="sudo -E"
+      # No '-E': nothing below needs the caller's environment, a stray
+      # EASYRSA_* variable must not leak into EasyRSA, and sudo-rs (the
+      # default sudo on Ubuntu 25.10+) ignores '-E' anyway.
+      export SUDOE="sudo"
     else
       err "::: Please install sudo or run this as root."
       exit 1
@@ -3064,9 +3067,11 @@ and HMAC key will now be generated." \
     fi
   fi
 
-  # Build the server
-  EASYRSA_CERT_EXPIRE=3650 ${SUDOE} \
-    ./easyrsa --batch build-server-full "${SERVER_NAME}" nopass
+  # Build the server. Pass the 10-year lifetime as an option: an
+  # EASYRSA_CERT_EXPIRE prefix would not survive sudo-rs, leaving the
+  # server certificate at EasyRSA's 825-day default.
+  ${SUDOE} ./easyrsa --batch --days=3650 \
+    build-server-full "${SERVER_NAME}" nopass
 
   if [[ "${pivpnCERT}" == "rsa" ]]; then
     if [[ "${USE_PREDEFINED_DH_PARAM}" -eq 1 ]]; then

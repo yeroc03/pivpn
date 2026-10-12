@@ -1,14 +1,20 @@
 > [!NOTE]
-> **This is the [yeroc03/pivpn](https://github.com/yeroc03/pivpn) fork of [pivpn/pivpn](https://github.com/pivpn/pivpn).**
+> **This is the yeroc03 fork of [pivpn/pivpn](https://github.com/pivpn/pivpn).**
 > It carries fixes for Ubuntu 24.04 / 26.04 LTS, OpenVPN 2.6 / 2.7 and NetworkManager clients
-> (listed in [FORK-CHANGES.md](FORK-CHANGES.md)), and its installer installs the fork's scripts:
+> (listed in [FORK-CHANGES.md](FORK-CHANGES.md)) and installs from a local clone, so it does not
+> depend on any particular git server. See **[INSTALL.md](INSTALL.md)** for both ways to install:
 >
 > ```Shell
-> curl -sSfL https://raw.githubusercontent.com/yeroc03/pivpn/master/auto_install/install.sh -o pivpn-install.sh
+> # From a clone (works with a private server, e.g. Gitea)
+> git clone <this repository> pivpn && cd pivpn && ./install.sh
+>
+> # Standalone installer (clones the repository named in auto_install/install.sh)
+> curl -fsSL https://raw.githubusercontent.com/yeroc03/pivpn/master/auto_install/install.sh -o pivpn-install.sh
 > bash pivpn-install.sh
 > ```
 >
-> Update an installed copy with `pivpn update` (or `pivpn wg update` / `pivpn ovpn update` with one protocol).
+> Update an installed copy with `pivpn update` (after `git pull` in your clone, if you installed from one).
+> The upstream instructions below install upstream PiVPN, not this fork.
 
 > [!WARNING]
 > PiVPN is maintained on a best-effort basis, please read more about it [here](https://github.com/pivpn/pivpn/releases/tag/v4.6.1). Previous announcement is [here](https://github.com/pivpn/pivpn/releases/tag/v4.6.0).

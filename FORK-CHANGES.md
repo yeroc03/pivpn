@@ -33,6 +33,8 @@ OpenVPN-specific ones again against Ubuntu 26.04's OpenVPN 2.7.0 build; see
 | 10 | A fork's installer installs upstream's scripts | Anyone installing from a fork | Fork fixes silently not installed | `3607bf4` |
 | 11 | Small script bugs, temp files left in `/tmp` | Edge cases | See below | `0e39323`, `ae50822`, `deacd94` |
 | 12 | CI | Fork maintenance | Travis is gone; release jobs would run on the fork | `0fd1373` |
+| 13 | Installer can only install from a fixed git URL | Self-hosted or private repositories | Fork tied to GitHub | `1077820`, `9fcdc4f` |
+| 14 | `setupVars.conf` unreadable by the installing user | Installer run as a normal user (the usual way) | Second protocol not detected; dual `pivpn` command not linked | `cf9c898` |
 
 A and B are the two problems already written up in this project
 (`pivpn-easyrsa-tar-fix.md`, `pivpn-openvpn-cipher-fix.md`). Everything from 1
@@ -201,8 +203,8 @@ The installer clones its scripts and templates from `pivpnGitUrl` into
 `/usr/local/src/pivpn` and runs everything from there, whichever copy of
 `install.sh` you started. In a fork that default still pointed at
 `pivpn/pivpn`, so none of the fork's fixes would have been installed unless
-`--giturl` was passed. It now points at `yeroc03/pivpn`, as do the install
-hints in the installer, the uninstaller and the README.
+`--giturl` was passed. The standalone installer's default now points at
+`yeroc03/pivpn`; installing from a clone (13) doesn't use it at all.
 
 ### 11. Smaller fixes
 
@@ -223,13 +225,62 @@ the same shellcheck and shfmt checks as `.travis.yml` on every push. The
 semantic-release and install.pivpn.io Pages workflows now only run in
 `pivpn/pivpn`, so the fork never tries to publish releases or a Pages site.
 
+### 13. Installing from a local clone
+
+Upstream's installer always clones its scripts from a fixed URL, even when you
+start it from a clone (`git clone ... && bash pivpn/auto_install/install.sh`
+still installs whatever `pivpnGitUrl` points at). That ties an install to one
+git server and needs that server to be readable anonymously.
+
+Now, run from a clone (the new top-level `./install.sh`, or
+`auto_install/install.sh` inside a clone), the installer installs **that
+clone's last commit** and contacts no git server, so the repository can live
+on a private Gitea, or nowhere. Run on its own (downloaded or piped), it still
+clones `pivpnGitUrl`; `--giturl`/`--gitbranch` and the new `PIVPN_GIT_URL`/
+`PIVPN_GIT_BRANCH` variables override either way. [INSTALL.md](INSTALL.md)
+describes both routes.
+
+How it works and what it handles:
+
+- The installed copy at `/usr/local/src/pivpn` is a root-owned shallow clone
+  of your clone, whose origin is your clone. `pivpn update` therefore updates
+  from it (`git pull` the clone first), using your clone's credentials, never
+  root's.
+- Your clone is owned by you but read by root, which git refuses as "dubious
+  ownership". Command-line `-c safe.directory` doesn't reach the upload-pack
+  side of a local clone (tested), so the exception for exactly that repository
+  is passed to upload-pack and kept in `remote.origin.uploadpack` for later
+  fetches. (Under `sudo`, git also accepts repositories owned by the invoking
+  user; the exception covers a root shell and other owners too.)
+- Uncommitted changes in the clone are listed with a warning, and an
+  interactive run asks before continuing, since only the last commit is
+  installed.
+- Started from the installed copy itself, the installer reinstalls from that
+  copy's origin instead of deleting the folder it is about to clone from.
+- `pivpn update --url` accepts a clone's path as well as a git URL, to move an
+  install between a clone and a server in either direction; a missing clone is
+  reported with that hint.
+- The uninstall and low-disk messages no longer name a GitHub URL.
+
+### 14. `setupVars.conf` unreadable by the installing user (upstream `test` branch regression)
+
+Upstream's unreleased mktemp change (`bad504d`) creates the temporary settings
+file with mode 0600, and `cp` carried that mode to
+`/etc/pivpn/<protocol>/setupVars.conf`. The installer runs as a normal user and
+checks those files with `[[ -r ]]`, so when run again to add the second
+protocol it no longer saw the first: `/usr/local/bin/pivpn` was linked to the
+new protocol's script instead of the dual-protocol command, and an interactive
+run skipped the Update/Repair/Reconfigure menu. Found while testing route 13 as
+a normal user; the file is now installed with mode 0644 again (settings only,
+no keys).
+
 ---
 
 ## Upstream `test` branch commits included
 
 | Upstream | Change |
 |---|---|
-| `bad504d` | Temporary setup file created with `mktemp` (TOCTOU race) |
+| `bad504d` | Temporary setup file created with `mktemp` (TOCTOU race); its side effect on file permissions is fixed by 14 |
 | `389c1a6`, `21b9487` | Alpine detection cleanup; stray `\=` in grep patterns removed (avoids "stray \\" warnings with GNU grep 3.8+) |
 | `92b281e` | Don't reset Pi-hole v6 `dns.listeningMode` if it already serves VPN clients |
 | `416c68e` | Parse flags before the distribution check |
@@ -275,8 +326,17 @@ In an Ubuntu 24.04 container (OpenVPN 2.6.19, GNU tar 1.35, EasyRSA 3.2.3):
 
 - The fork's installer ran unattended end to end for OpenVPN (ECC,
   tls-crypt-v2, TLS 1.3) and then again to add WireGuard (dual protocol),
-  cloning the fork's branch; both NAT rules were installed and saved, and the
-  dual `pivpn` command was linked.
+  both as root and as a normal user with sudo; both NAT rules were installed
+  and saved, and the dual `pivpn` command was linked.
+- Installing from a clone (13): a clone owned by a normal user installed via
+  `./install.sh` (OpenVPN, then WireGuard), with the uncommitted-changes
+  warning shown; `pivpn update` picked up a new commit from the clone; the
+  installer restarted from the installed copy reinstalled from the clone;
+  `pivpn update --url` switched to the GitHub URL and back; a missing clone was
+  reported. The launch contexts were checked separately: clone (absolute and
+  relative path, through a symlink, through `./install.sh`) installs locally;
+  a downloaded copy, a piped run and a tarball without `.git` use
+  `pivpnGitUrl`, and a piped run cloned from GitHub.
 - A real OpenVPN server ran from the generated `server.conf` (dropping to the
   `openvpn` user, with the tls-crypt-v2 verify script), and clients connected
   from a separate network namespace:
@@ -312,7 +372,8 @@ clients, Debian, Raspberry Pi OS and Alpine.
 git remote add upstream https://github.com/pivpn/pivpn.git   # once
 git fetch upstream
 git merge upstream/master        # or cherry-pick from upstream/test
-git push origin master
+git push origin master           # origin = GitHub, Gitea, wherever the fork lives
 ```
 
-Then on the server: `pivpn update`.
+Then on the server: `git pull` in the clone PiVPN was installed from, and
+`pivpn update` (just `pivpn update` for a standalone install).

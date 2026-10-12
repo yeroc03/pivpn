@@ -3909,7 +3909,11 @@ writeConfigFiles() {
   echo "INSTALLED_PACKAGES=(${INSTALLED_PACKAGES[*]})" >> "${tempsetupVarsFile}"
   echo "::: Setupfiles copied to ${setupConfigDir}/${VPN}/${setupVarsFile}"
   ${SUDO} mkdir -p "${setupConfigDir}/${VPN}/"
-  ${SUDO} cp "${tempsetupVarsFile}" "${setupConfigDir}/${VPN}/${setupVarsFile}"
+  # 0644 as before the mktemp change: the installer runs as a normal user and
+  # must be able to read it to notice an existing install (second protocol,
+  # Update/Repair/Reconfigure). It holds settings, no keys.
+  ${SUDO} install -m 0644 "${tempsetupVarsFile}" \
+    "${setupConfigDir}/${VPN}/${setupVarsFile}"
   rm -f "${tempsetupVarsFile}"
 }
 

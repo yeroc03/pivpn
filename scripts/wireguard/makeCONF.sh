@@ -165,7 +165,7 @@ FIRST_IPV4="$(decIPv4ToDot "${FIRST_IPV4_DEC}")"
 LAST_IPV4="$(decIPv4ToDot "${LAST_IPV4_DEC}")"
 
 if [[ -z "${CLIENT_IP}" ]]; then
-  read -p "Enter the Client IP from range ${FIRST_IPV4} - ${LAST_IPV4} (optional): " CLIENT_IP
+  read -r -p "Enter the Client IP from range ${FIRST_IPV4} - ${LAST_IPV4} (optional): " CLIENT_IP
 fi
 
 if [[ -n "${CLIENT_IP}" && "${CLIENT_IP}" != "auto" ]]; then

@@ -1,147 +1,136 @@
 #!/bin/bash
-#shellcheck disable=SC2317
-### Updates pivpn scripts (Not PiVPN)
-# TODO: Delete this section when the updating functionality will be re-enabled
-###
+# PiVPN: update the PiVPN scripts from the git repository they came from.
+#
+# The installer clones the repository to /usr/local/src/pivpn and symlinks
+# /opt/pivpn and /usr/local/bin/pivpn into it, so updating the scripts only
+# means moving that checkout to the newest commit of its branch. Files that
+# the installer generated from templates (server.conf, wg0.conf, Default.txt,
+# setupVars.conf, client profiles) live elsewhere and are not touched.
+
+### Constants
+pivpnFilesDir="/usr/local/src/pivpn"
+
+### Functions
 err() {
   echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
 }
 
-err "::: The updating functionality for PiVPN scripts is temporarily disabled"
-err "::: To keep the VPN (and the system) up to date, use:"
-err "        apt update; apt upgrade"
-exit 0
-### END SECTION ###
-
-### Constants
-pivpnrepo="https://github.com/pivpn/pivpn.git"
-pivpnlocalpath="/etc/.pivpn"
-pivpnscripts="/opt/pivpn/"
-bashcompletiondir="/etc/bash_completion.d/"
-
-# Find the rows and columns. Will default to 80x24 if it can not be detected.
-screen_size="$(stty size 2> /dev/null || echo 24 80)"
-rows="$(echo "${screen_size}" | awk '{print $1}')"
-columns="$(echo "${screen_size}" | awk '{print $2}')"
-
-# Divide by two so the dialogs take up half of the screen, which looks nice.
-r=$((rows / 2))
-c=$((columns / 2))
-# Unless the screen is tiny
-r=$((r < 20 ? 20 : r))
-c=$((c < 70 ? 70 : c))
-
-chooseVPNCmd=(whiptail
-  --backtitle "Setup PiVPN"
-  --title "Installation mode"
-  --separate-output
-  --radiolist "Choose a VPN to update (press space to select):"
-  "${r}" "${c}" 2)
-VPNChooseOptions=(WireGuard "" on
-  OpenVPN "" off)
-
-if VPN="$("${chooseVPNCmd[@]}" "${VPNChooseOptions[@]}" 2>&1 > /dev/tty)"; then
-  echo "::: Using VPN: ${VPN}"
-  VPN="${VPN,,}"
-else
-  err "::: Cancel selected, exiting...."
-  exit 1
-fi
-
-setupVars="/etc/pivpn/${VPN}/setupVars.conf"
-
-# shellcheck disable=SC1090
-source "${setupVars}"
-
-### Functions
-# TODO: Uncomment this function when the updating functionality
-# will be re-enabled
-#err() {
-#  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
-#}
-
 scriptusage() {
-  echo "::: Updates PiVPN scripts"
+  echo "::: Updates the PiVPN scripts from the git repository they were"
+  echo "::: installed from (${pivpnFilesDir})"
   echo ":::"
-  echo "::: Usage: pivpn <-up|update> [-t|--test]"
+  echo -n "::: Usage: pivpn <-up|update> [-b|--branch <name>] "
+  echo "[-u|--url <git url>] [-t|test] [-h|help]"
   echo ":::"
   echo "::: Commands:"
-  echo ":::  [none]              Updates from master branch"
-  echo ":::  -t, test            Updates from test branch"
+  echo ":::  [none]              Update from the branch currently checked out"
+  echo ":::  -b, --branch <name> Update from (and switch to) another branch"
+  echo ":::  -u, --url <url>     Switch the checkout to another repository first"
+  echo ":::  -t, test            Same as '--branch test'"
   echo ":::  -h, help            Show this usage dialog"
 }
 
-updatepivpnscripts() {
-  local branch
-  branch="${1}"
-  ## We don't know what sort of changes users have made.
-  ## Lets remove first /etc/.pivpn dir then clone it back again
-  echo -n "Going do update PiVPN Scripts"
+### Script
+branch=""
+url=""
 
-  if [[ -z "${branch}" ]]; then
-    echo "from ${branch} branch"
-  else
-    echo
-  fi
+while [[ "$#" -gt 0 ]]; do
+  case "${1}" in
+    -t | test)
+      branch="test"
+      ;;
+    -b | --branch | --gitbranch)
+      if [[ -z "${2}" ]]; then
+        err "::: Missing branch name for ${1}"
+        exit 1
+      fi
 
-  if [[ -d "${pivpnlocalpath}" ]] \
-    && [[ -n "${pivpnlocalpath}" ]]; then
-    rm -rf "${pivpnlocalpath}/../.pivpn"
-  fi
+      branch="${2}"
+      shift
+      ;;
+    -u | --url | --giturl)
+      if [[ -z "${2}" ]]; then
+        err "::: Missing repository URL for ${1}"
+        exit 1
+      fi
 
-  cloneandupdate "${branch}"
-  echo -n "PiVPN Scripts have been updated"
+      url="${2}"
+      shift
+      ;;
+    -h | help)
+      scriptusage
+      exit 0
+      ;;
+    *)
+      err "::: Unknown option '${1}'"
+      scriptusage
+      exit 1
+      ;;
+  esac
 
-  if [[ -z "${branch}" ]]; then
-    echo "from ${branch} branch"
-  else
-    echo
-  fi
-}
+  shift
+done
 
-## Clone and copy pivpn scripts to /opt/pivpn
-cloneandupdate() {
-  local branch
-  branch="${1}"
-  git clone "${pivpnrepo}" "${pivpnlocalpath}"
-
-  if [[ -z "${branch}" ]]; then
-    git -C "${pivpnlocalpath}" checkout "${branch}"
-    git -C "${pivpnlocalpath}" pull origin "${branch}"
-  fi
-
-  cp "${pivpnlocalpath}"/scripts/*.sh "${pivpnscripts}"
-  cp "${pivpnlocalpath}"/scripts/"${VPN}"/*.sh "${pivpnscripts}"
-  cp "${pivpnlocalpath}"/scripts/"${VPN}"/bash-completion "${bashcompletiondir}"
-
-  if [[ -z "${branch}" ]]; then
-    git -C "${pivpnlocalpath}" checkout master
-  fi
-}
-
-## SCRIPT
-if [[ ! -f "${setupVars}" ]]; then
-  err "::: Missing setup vars file!"
+if [[ "${EUID}" -ne 0 ]]; then
+  err "::: The update must run as root (use 'pivpn update')"
   exit 1
 fi
 
-if [[ "$#" -eq 0 ]]; then
-  updatepivpnscripts
-else
-  while true; do
-    case "${1}" in
-      -t | test)
-        updatepivpnscripts 'test'
-        exit 0
-        ;;
-      -h | help)
-        scriptusage
-        exit 0
-        ;;
-      *)
-        updatepivpnscripts
-        exit 0
-        ;;
-    esac
-  done
+if ! command -v git > /dev/null; then
+  err "::: git is not installed"
+  exit 1
 fi
+
+if ! git -C "${pivpnFilesDir}" rev-parse --git-dir &> /dev/null; then
+  err "::: ${pivpnFilesDir} is not a git checkout, reinstall PiVPN to update"
+  exit 1
+fi
+
+cd "${pivpnFilesDir}" || exit 1
+
+if [[ -n "${url}" ]]; then
+  echo "::: Switching the repository to ${url}"
+  git remote set-url origin "${url}" || exit 1
+fi
+
+if [[ -z "${branch}" ]]; then
+  branch="$(git rev-parse --abbrev-ref HEAD)"
+
+  if [[ "${branch}" == "HEAD" ]]; then
+    err "::: The checkout is not on a branch, pass one with --branch"
+    exit 1
+  fi
+fi
+
+echo "::: Updating PiVPN scripts from $(git remote get-url origin)," \
+  "branch '${branch}'"
+
+before="$(git rev-parse --short HEAD)"
+
+# The installer clones with --depth 1, so keep the checkout shallow
+if ! git fetch -q --depth 1 origin "${branch}"; then
+  err "::: Could not fetch branch '${branch}'"
+  exit 1
+fi
+
+if ! git diff --quiet HEAD; then
+  echo "::: These local changes in ${pivpnFilesDir} will be discarded:"
+  git diff --stat HEAD | sed 's/^/:::   /'
+fi
+
+if ! git checkout -q --force -B "${branch}" FETCH_HEAD; then
+  err "::: Could not check out '${branch}'"
+  exit 1
+fi
+
+after="$(git rev-parse --short HEAD)"
+
+if [[ "${before}" == "${after}" ]]; then
+  echo "::: PiVPN scripts are already up to date (${after})"
+else
+  echo "::: PiVPN scripts updated: ${before} -> ${after}"
+  git log -1 --format=':::   %h %s (%cs)'
+fi
+
+echo -n "::: Changes to templates under ${pivpnFilesDir}/files only apply "
+echo "to new installs; existing server and client configs are unchanged."

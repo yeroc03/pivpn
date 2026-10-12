@@ -19,6 +19,12 @@ backup() {
   exit "${?}"
 }
 
+update() {
+  shift
+  ${SUDO} "${scriptDir}/update.sh" "$@"
+  exit "${?}"
+}
+
 showHelp() {
   echo "::: To pass off to the pivpn command for each protocol"
   echo ":::"
@@ -28,6 +34,7 @@ showHelp() {
   echo ":::  -h,  help             Show this help dialog"
   echo ":::  -u,  uninstall        Uninstall pivpn from your system!"
   echo ":::  -bk, backup           Backup VPN configs and user profiles"
+  echo ":::  -up, update           Update the PiVPN scripts from git"
   exit 0
 }
 
@@ -66,6 +73,9 @@ case "${1}" in
     ;;
   "-bk" | "backup")
     backup
+    ;;
+  "-up" | "update")
+    update "$@"
     ;;
   *)
     showHelp

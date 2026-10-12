@@ -803,7 +803,6 @@ installDependentPackages() {
   # Install packages passed via argument array
   # No spinner - conflicts with set -e
   local FAILED=0
-  local APTLOGFILE
   declare -a TO_INSTALL=()
   declare -a argArray1=("${!1}")
 
@@ -831,8 +830,6 @@ installDependentPackages() {
       fi
     fi
   done
-
-  APTLOGFILE="$(${SUDO} mktemp)"
 
   # shellcheck disable=SC2086
   ${SUDO} ${PKG_INSTALL} "${TO_INSTALL[@]}"
@@ -863,8 +860,7 @@ installDependentPackages() {
   done
 
   if [[ "${FAILED}" -gt 0 ]]; then
-    echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]:" >&2
-    ${SUDO} cat "${APTLOGFILE}" >&2
+    err "::: ${FAILED} package(s) failed to install, see the output above"
     exit 1
   fi
 }
@@ -3914,6 +3910,7 @@ writeConfigFiles() {
   echo "::: Setupfiles copied to ${setupConfigDir}/${VPN}/${setupVarsFile}"
   ${SUDO} mkdir -p "${setupConfigDir}/${VPN}/"
   ${SUDO} cp "${tempsetupVarsFile}" "${setupConfigDir}/${VPN}/${setupVarsFile}"
+  rm -f "${tempsetupVarsFile}"
 }
 
 installScripts() {

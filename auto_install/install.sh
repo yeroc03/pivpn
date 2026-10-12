@@ -496,7 +496,12 @@ spinner() {
   local delay=0.50
   local spinstr='/-\|'
 
-  while ps a | awk '{print $1}' | grep -q "${pid}"; do
+  # 'ps a' only lists processes that have a terminal, so without one
+  # (cloud-init, ssh without -t, CI) the old check returned at once and the
+  # next step raced the background job: apt-get install against a running
+  # apt-get update, git checkout against an unfinished clone. Check /proc
+  # instead ('kill -0' can't signal the root-owned sudo child).
+  while [[ -e "/proc/${pid}" ]]; do
     local temp="${spinstr#?}"
     printf " [%c]  " "${spinstr}"
     local spinstr="${temp}${spinstr%"$temp"}"

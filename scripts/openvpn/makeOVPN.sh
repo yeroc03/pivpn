@@ -170,6 +170,50 @@ keyPASS() {
   cd pki || exit
 }
 
+allocateClientIP() {
+  local ip ip_dot
+  # Exclude first, last and server addresses
+  # shellcheck disable=SC2154
+  MAX_CLIENTS="$((2 ** (32 - subnetClass) - 3))"
+
+  # shellcheck disable=SC2154
+  FIRST_IPV4_DEC="$(dotIPv4FirstDec "${pivpnNET}" "${subnetClass}")"
+  LAST_IPV4_DEC="$(dotIPv4LastDec "${pivpnNET}" "${subnetClass}")"
+
+  if [ "$(find /etc/openvpn/ccd -type f | wc -l)" -ge "${MAX_CLIENTS}" ]; then
+    echo "::: Can't add any more clients (max. ${MAX_CLIENTS})!"
+    exit 1
+  fi
+
+  # Find an unused address for the client IP
+  for ((ip = FIRST_IPV4_DEC + 2; ip <= LAST_IPV4_DEC - 1; ip++)); do
+    # find returns 0 if the folder is empty, so we create the 'ls -A [...]'
+    # exception to stop at the first static IP (10.8.0.2). Otherwise it would
+    # cycle to the end without finding and available octet.
+    ip_dot="$(decIPv4ToDot "${ip}")"
+
+    if [[ -z "$(ls -A /etc/openvpn/ccd)" ]] \
+      || ! find /etc/openvpn/ccd -type f \
+        -exec grep -qwF "${ip_dot}" {} +; then
+      UNUSED_IPV4_DOT="${ip_dot}"
+      break
+    fi
+  done
+}
+
+hasValidCert() {
+  local line
+  # True if index.txt holds a valid (V) certificate whose CN is ${1}
+  while read -r line || [[ -n "${line}" ]]; do
+    if [[ "$(echo "${line}" | awk '{print $1}')" == "V" ]] \
+      && [[ "${line##*/CN=}" == "${1}" ]]; then
+      return 0
+    fi
+  done < "${INDEX}"
+
+  return 1
+}
+
 ### Script
 if [[ ! -f "${setupVars}" ]]; then
   err "::: Missing setup vars file!"
@@ -291,35 +335,6 @@ if [[ ! -d "${install_home}/ovpns" ]]; then
   chmod 0750 "${install_home}/ovpns"
 fi
 
-# Exclude first, last and server addresses
-# shellcheck disable=SC2154
-MAX_CLIENTS="$((2 ** (32 - subnetClass) - 3))"
-
-# shellcheck disable=SC2154
-FIRST_IPV4_DEC="$(dotIPv4FirstDec "${pivpnNET}" "${subnetClass}")"
-LAST_IPV4_DEC="$(dotIPv4LastDec "${pivpnNET}" "${subnetClass}")"
-
-if [ "$(find /etc/openvpn/ccd -type f | wc -l)" -ge "${MAX_CLIENTS}" ]; then
-  echo "::: Can't add any more clients (max. ${MAX_CLIENTS})!"
-  exit 1
-fi
-
-# Find an unused address for the client IP
-for ((ip = FIRST_IPV4_DEC + 2; ip <= LAST_IPV4_DEC - 1; ip++)); do
-  # find returns 0 if the folder is empty, so we create the 'ls -A [...]'
-  # exception to stop at the first static IP (10.8.0.2). Otherwise it would
-  # cycle to the end without finding and available octet.
-  # disabling SC2514, variable sourced externaly
-  ip_dot="$(decIPv4ToDot "${ip}")"
-
-  if [[ -z "$(ls -A /etc/openvpn/ccd)" ]] \
-    || ! find /etc/openvpn/ccd -type f \
-      -exec grep -q "${ip_dot}" {} +; then
-    UNUSED_IPV4_DOT="${ip_dot}"
-    break
-  fi
-done
-
 #bitWarden
 if [[ "${BITWARDEN}" =~ "2" ]]; then
   useBitwarden
@@ -334,8 +349,15 @@ else
 fi
 
 if [[ "${GENOVPNONLY}" == 1 ]]; then
-  # Generate .ovpn configuration file
-  cd /etc/openvpn/easy-rsa/pki || exit
+  # Regenerate the .ovpn file of an existing client from the current
+  # Default.txt, reusing its certificate, key and static IP
+  if ! hasValidCert "${NAME}"; then
+    err "::: '${NAME}' has no valid certificate, nothing to regenerate."
+    err "::: Use 'pivpn add' to create a new client."
+    exit 1
+  fi
+
+  cd /etc/openvpn/easy-rsa/pki || exit 1
 else
   # Check if name is already in use
   while read -r line || [[ -n "${line}" ]]; do
@@ -381,7 +403,10 @@ else
     exit 1
   fi
 
-  cd /etc/openvpn/easy-rsa || exit
+  # Reserve the client's static IP before issuing anything
+  allocateClientIP
+
+  cd /etc/openvpn/easy-rsa || exit 1
 
   if [[ "${NO_PASS}" =~ "1" ]]; then
     if [[ -n "${PASSWD}" ]]; then
@@ -398,7 +423,7 @@ fi
 #1st Verify that clients Public Key Exists
 if [[ ! -f "issued/${NAME}${CRT}" ]]; then
   err "[ERROR]: Client Public Key Certificate not found: ${NAME}${CRT}"
-  exit
+  exit 1
 fi
 
 echo "Client's cert found: ${NAME}${CRT}"
@@ -406,7 +431,7 @@ echo "Client's cert found: ${NAME}${CRT}"
 #Then, verify that there is a private key for that client
 if [[ ! -f "private/${NAME}${KEY}" ]]; then
   err "[ERROR]: Client Private Key not found: ${NAME}${KEY}"
-  exit
+  exit 1
 fi
 
 echo "Client's Private Key found: ${NAME}${KEY}"
@@ -414,7 +439,7 @@ echo "Client's Private Key found: ${NAME}${KEY}"
 #Confirm the CA public key exists
 if [[ ! -f "${CA}" ]]; then
   err "[ERROR]: CA Public Key not found: ${CA}"
-  exit
+  exit 1
 fi
 
 echo "CA public Key found: ${CA}"
@@ -423,24 +448,34 @@ if [[ "${TWO_POINT_FIVE}" -eq 1 ]]; then
   # Confirm the tls-crypt-v2 key file exists
   if [[ ! -f "${TC_V2}" ]]; then
     err "[ERROR]: TLS crypt server key not found: ${TC_V2}"
-    exit
+    exit 1
   fi
 
   echo "TLS crypt server key found: ${TC_V2}"
 
-  # Generate and save a random 128-bit ID to embed into the tls-crypt key
-  # to reject revoked clients at the tls-crypt level
-  metadata="$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 22)"
-  base64_metadata="$(echo -n "${metadata}" | base64 -w 0)"
-  echo "${NAME} ${metadata}" >> "${TC_V2_METADATA}"
+  if [[ "${GENOVPNONLY}" == 1 ]] \
+    && [[ -s "tc-v2/${NAME}.key" ]] \
+    && awk -v n="${NAME}" '$1 == n { found = 1 } END { exit !found }' \
+      "${TC_V2_METADATA}" 2> /dev/null; then
+    # Regenerating: keep the client's existing tls-crypt-v2 key, so the
+    # profile already on its device keeps working
+    echo "Reusing the existing tls-crypt-v2 client key for ${NAME}"
+  else
+    # Generate and save a random 128-bit ID to embed into the tls-crypt key
+    # to reject revoked clients at the tls-crypt level
+    metadata="$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 22)"
+    base64_metadata="$(echo -n "${metadata}" | base64 -w 0)"
+    echo "${NAME} ${metadata}" >> "${TC_V2_METADATA}"
 
-  # Generate client-specific tls-crypt-v2 key based on the server one
-  openvpn --tls-crypt-v2 "${TC_V2}" --genkey tls-crypt-v2-client "tc-v2/${NAME}.key" "${base64_metadata}"
+    # Generate client-specific tls-crypt-v2 key based on the server one
+    rm -f "tc-v2/${NAME}.key"
+    openvpn --tls-crypt-v2 "${TC_V2}" --genkey tls-crypt-v2-client "tc-v2/${NAME}.key" "${base64_metadata}"
+  fi
 else
   # Confirm the tls-auth key file exists
   if [[ ! -f "${TA}" ]]; then
     err "[ERROR]: TLS auth key not found: ${TA}"
-    exit
+    exit 1
   fi
 
   echo "TLS auth key found: ${TA}"
@@ -497,7 +532,7 @@ if [[ "${iOS}" == 1 ]]; then
   printf "========================================================\n"
 
   openssl pkcs12 \
-    -passin pass:"${PASSWD_UNESCAPED}" \
+    -passin pass:"${PASSWD}" \
     -export \
     -in "issued/${NAME}${CRT}" \
     -inkey "private/${NAME}${KEY}" \
@@ -515,20 +550,25 @@ if [[ "${iOS}" == 1 ]]; then
   printf "========================================================\n\n"
 fi
 
-echo -n "ifconfig-push ${UNUSED_IPV4_DOT} " >> /etc/openvpn/ccd/"${NAME}"
-# The space after ${UNUSED_IPV4_DOT} is important!
-cidrToMask "${subnetClass}" >> /etc/openvpn/ccd/"${NAME}"
-# the end resuld should be a line like:
-# ifconfig-push ${UNUSED_IPV4_DOT} ${subnetClass}
-# ifconfig-push 10.205.45.8 255.255.255.0
+# A regenerated profile keeps the static IP already in its ccd file
+if [[ "${GENOVPNONLY}" != 1 ]] || [[ ! -s /etc/openvpn/ccd/"${NAME}" ]]; then
+  if [[ -z "${UNUSED_IPV4_DOT}" ]]; then
+    allocateClientIP
+  fi
 
-if [[ -f /etc/pivpn/hosts.openvpn ]]; then
-  echo "${UNUSED_IPV4_DOT} ${NAME}.pivpn" >> /etc/pivpn/hosts.openvpn
+  # The end result should be a line like:
+  # ifconfig-push 10.205.45.8 255.255.255.0
+  echo "ifconfig-push ${UNUSED_IPV4_DOT} $(cidrToMask "${subnetClass}")" \
+    > /etc/openvpn/ccd/"${NAME}"
 
-  if killall -SIGHUP pihole-FTL; then
-    echo "::: Updated hosts file for Pi-hole"
-  else
-    err "::: Failed to reload pihole-FTL configuration"
+  if [[ -f /etc/pivpn/hosts.openvpn ]]; then
+    echo "${UNUSED_IPV4_DOT} ${NAME}.pivpn" >> /etc/pivpn/hosts.openvpn
+
+    if killall -SIGHUP pihole-FTL; then
+      echo "::: Updated hosts file for Pi-hole"
+    else
+      err "::: Failed to reload pihole-FTL configuration"
+    fi
   fi
 fi
 

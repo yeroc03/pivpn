@@ -55,6 +55,9 @@ INSTALLED_PACKAGES=()
 ######## URLs ########
 easyrsaVer="3.2.3"
 easyrsaRel="https://github.com/OpenVPN/easy-rsa/releases/download/v${easyrsaVer}/EasyRSA-${easyrsaVer}.tgz"
+# SHA-256 of the release tarball above. Update it together with easyrsaVer
+# (sha256sum EasyRSA-<ver>.tgz), or leave it empty to skip the check.
+easyrsaSha256="577d9a0f5205ee74d818af163c2f3447fff8d3dd11b91523db2fe8d99cd851e3"
 
 ######## Undocumented Flags. Shhh ########
 runUnattended=false
@@ -2935,7 +2938,7 @@ parameters will be generated on your device." "${r}" "${c}"; then
 }
 
 confOpenVPN() {
-  local sed_pattern file_pattern
+  local sed_pattern file_pattern easyrsaTgz
 
   # Grab the existing Hostname
   host_name="$(hostname -s)"
@@ -2954,6 +2957,27 @@ confOpenVPN() {
   ${SUDO} tar -czf "/etc/${OPENVPN_BACKUP}" /etc/openvpn &> /dev/null
   umask "${CURRENT_UMASK}"
 
+  # Get easy-rsa. Download to a file first so a failed download and a failed
+  # extraction report different errors, and so the tarball is verified
+  # before anything of the existing installation is removed.
+  if ! easyrsaTgz="$(mktemp)"; then
+    err "::: Failed to create a temporary file for EasyRSA"
+    exit 1
+  fi
+
+  if ! curl -sSfL -o "${easyrsaTgz}" "${easyrsaRel}"; then
+    rm -f "${easyrsaTgz}"
+    err "${0}: ERR: Failed to download EasyRSA from ${easyrsaRel}"
+    exit 1
+  fi
+
+  if [[ -n "${easyrsaSha256}" ]] \
+    && [[ "$(sha256sum "${easyrsaTgz}" | awk '{print $1}')" != "${easyrsaSha256}" ]]; then
+    rm -f "${easyrsaTgz}"
+    err "${0}: ERR: EasyRSA ${easyrsaVer} download does not match its SHA-256"
+    exit 1
+  fi
+
   if [[ -f /etc/openvpn/server.conf ]]; then
     ${SUDO} rm /etc/openvpn/server.conf
   fi
@@ -2965,18 +2989,18 @@ confOpenVPN() {
   # Create folder to store client specific directives used to push static IPs
   ${SUDO} mkdir -p /etc/openvpn/ccd
 
-  # If easy-rsa exists, remove it
+  # If easy-rsa exists, remove it (it was backed up with /etc/openvpn above)
   if [[ -d /etc/openvpn/easy-rsa/ ]]; then
     ${SUDO} rm -rf /etc/openvpn/easy-rsa/
   fi
 
-  # Get easy-rsa
   ${SUDO} mkdir -p /etc/openvpn/easy-rsa
-  curl -sSfL "${easyrsaRel}" \
-    | ${SUDO} tar -xz -C /etc/openvpn/easy-rsa --strip-components 1
+  ${SUDO} tar -xz -C /etc/openvpn/easy-rsa --strip-components 1 \
+    -f "${easyrsaTgz}"
+  rm -f "${easyrsaTgz}"
 
   if [[ ! -s /etc/openvpn/easy-rsa/easyrsa ]]; then
-    err "${0}: ERR: Failed to download EasyRSA."
+    err "${0}: ERR: Failed to extract EasyRSA."
     exit 1
   fi
 

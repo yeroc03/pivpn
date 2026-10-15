@@ -211,5 +211,10 @@ Removing the last one also removes the scripts. To reinstall later, run
 
 ## Extras
 
-`extras/proton-drive-sync/` mirrors the client profiles to Proton Drive; it is
-not installed by the installer. See its `README.md`.
+Optional add-ons in `extras/`, not installed by the installer; each folder has
+a `README.md` with setup steps:
+
+| Folder | What it does |
+|---|---|
+| `extras/duckdns-update/` | Keeps your DuckDNS name pointing at your home IP (systemd timer, optional Gotify alerts) |
+| `extras/proton-drive-sync/` | Mirrors the client profiles to Proton Drive |

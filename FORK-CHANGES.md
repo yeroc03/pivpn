@@ -276,6 +276,20 @@ no keys).
 
 ---
 
+## Extras
+
+Optional add-ons in `extras/`, not used by the installer (setup in each
+folder's `README.md`):
+
+- `extras/proton-drive-sync/`: mirrors `~/ovpns` and `~/configs` to Proton
+  Drive with the official CLI when PiVPN changes them; revoked clients' files
+  go to the Proton trash.
+- `extras/duckdns-update/`: a systemd timer that updates a DuckDNS name every 5
+  minutes using DuckDNS's own IP detection, with optional Gotify alerts on an
+  IP change, on failure and on recovery.
+
+---
+
 ## Upstream `test` branch commits included
 
 | Upstream | Change |

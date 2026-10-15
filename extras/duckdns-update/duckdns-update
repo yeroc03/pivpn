@@ -1,0 +1,88 @@
+#!/bin/bash
+# duckdns-update: point DuckDNS at this network's public IPv4 address.
+#
+# Run every 5 minutes by duckdns-update.timer. DuckDNS works out the address
+# itself from where the request comes from (its own recommended method), so
+# no "what is my IP" service is involved. Optionally tells Gotify when the
+# address changes, when updates start failing, and when they recover.
+#
+# Settings come from /etc/duckdns-update.conf (via the systemd unit):
+#   DUCKDNS_DOMAINS  subdomain(s) without .duckdns.org, comma separated
+#   DUCKDNS_TOKEN    DuckDNS account token
+#   GOTIFY_URL       e.g. https://gotify.example.lan   (optional)
+#   GOTIFY_TOKEN     Gotify application token          (optional)
+
+set -o nounset
+
+DUCKDNS_URL="${DUCKDNS_URL:-https://www.duckdns.org/update}"
+STATE_FILE="${STATE_DIRECTORY:-/var/lib/duckdns-update}/state"
+
+log() {
+  echo "duckdns-update: $*"
+}
+
+# notify <title> <message> <priority>
+notify() {
+  [[ -n "${GOTIFY_URL:-}" && -n "${GOTIFY_TOKEN:-}" ]] || return 0
+
+  # Token via curl's config on stdin, so it never shows up in 'ps'
+  printf 'header = "X-Gotify-Key: %s"\n' "${GOTIFY_TOKEN}" \
+    | curl -fsS --max-time 15 -o /dev/null -K - \
+      -F "title=${1}" -F "message=${2}" -F "priority=${3}" \
+      "${GOTIFY_URL%/}/message" \
+    || log "could not reach Gotify at ${GOTIFY_URL}"
+}
+
+if [[ -z "${DUCKDNS_DOMAINS:-}" || -z "${DUCKDNS_TOKEN:-}" ]]; then
+  log "DUCKDNS_DOMAINS and DUCKDNS_TOKEN must be set (/etc/duckdns-update.conf)"
+  exit 2
+fi
+
+# Last result: "ok <ip>" or "fail <ip>"
+read -r lastStatus lastIP 2> /dev/null < "${STATE_FILE}"
+lastStatus="${lastStatus:-none}"
+lastIP="${lastIP:-}"
+
+# -4: DuckDNS only auto-detects IPv4, so make sure the request goes out over
+# IPv4. ip= left empty means "use the address this request came from".
+response="$(printf 'url = "%s?domains=%s&token=%s&ip=&verbose=true"\n' \
+  "${DUCKDNS_URL}" "${DUCKDNS_DOMAINS}" "${DUCKDNS_TOKEN}" \
+  | curl -4 -fsS --max-time 30 --retry 2 --retry-delay 10 -K - 2>&1)"
+curlStatus=$?
+
+mapfile -t lines <<< "${response}"
+result="${lines[0]:-}"
+ip="${lines[1]:-}"
+change="${lines[3]:-}"
+
+if [[ "${curlStatus}" -ne 0 || "${result}" != "OK" ]]; then
+  if [[ "${result}" == "KO" ]]; then
+    reason="DuckDNS refused the update (check DUCKDNS_DOMAINS and DUCKDNS_TOKEN)"
+  else
+    # (curl prints one line per retry; the last one is enough)
+    reason="could not reach DuckDNS: ${lines[-1]:-no response}"
+  fi
+
+  log "${reason}"
+
+  # Alert once when updates start failing, not every 5 minutes
+  if [[ "${lastStatus}" != "fail" ]]; then
+    notify "DuckDNS update failing" \
+      "${DUCKDNS_DOMAINS}.duckdns.org: ${reason}" 8
+  fi
+
+  echo "fail ${lastIP}" > "${STATE_FILE}"
+  exit 1
+fi
+
+if [[ "${change}" == "UPDATED" ]]; then
+  log "${DUCKDNS_DOMAINS}.duckdns.org now points to ${ip} (was ${lastIP:-unknown})"
+  notify "Home IP changed" \
+    "${DUCKDNS_DOMAINS}.duckdns.org -> ${ip} (was ${lastIP:-unknown}). Connected WireGuard clients need their tunnel toggled off and on." 6
+elif [[ "${lastStatus}" == "fail" ]]; then
+  log "updates are working again (${ip}, unchanged)"
+  notify "DuckDNS update working again" \
+    "${DUCKDNS_DOMAINS}.duckdns.org -> ${ip}" 4
+fi
+
+echo "ok ${ip}" > "${STATE_FILE}"

@@ -1,0 +1,17 @@
+[Unit]
+Description=Update the DuckDNS record with this network's public IP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/duckdns-update.conf
+ExecStart=/usr/local/bin/duckdns-update
+TimeoutStartSec=2min
+# Runs as a throwaway unprivileged user; keeps its last result in
+# /var/lib/duckdns-update
+DynamicUser=yes
+StateDirectory=duckdns-update
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes

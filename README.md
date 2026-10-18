@@ -5,7 +5,7 @@
 > depend on any particular git server. See **[INSTALL.md](INSTALL.md)** for both ways to install:
 >
 > ```Shell
-> # From a clone (works with a private server, e.g. Gitea)
+> # From a clone (works with a private server, e.g. Gitea): opens the setup menu
 > git clone <this repository> pivpn && cd pivpn && ./install.sh
 >
 > # Standalone installer (clones the repository named in auto_install/install.sh)
@@ -13,6 +13,8 @@
 > bash pivpn-install.sh
 > ```
 >
+> The setup menu also sets up the optional extras: DuckDNS, a Proton Drive copy of the client
+> profiles, and Tailscale (exit node / subnet router); see the Extras section of INSTALL.md.
 > Update an installed copy with `pivpn update` (after `git pull` in your clone, if you installed from one).
 > The upstream instructions below install upstream PiVPN, not this fork.
 

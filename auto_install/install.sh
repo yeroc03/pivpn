@@ -4097,6 +4097,35 @@ installScripts() {
   echo " done."
 }
 
+# Offer the setup menu of the optional extras (extras/setup.sh) after an
+# interactive install that didn't start from it. Taking it hands over to the
+# menu, which offers the reboot when you leave it.
+offerExtras() {
+  local menu
+
+  if [[ -n "${localRepoDir}" ]]; then
+    menu="${localRepoDir}/extras/setup.sh"
+  else
+    menu="${pivpnFilesDir}/extras/setup.sh"
+  fi
+
+  [[ -f "${menu}" ]] || return 0
+
+  if whiptail \
+    --backtitle "Extras" \
+    --title "Set up the extras?" \
+    --yesno "PiVPN can also set up these optional extras for you:
+
+  DuckDNS        keeps your DuckDNS name pointing at your home IP
+  Proton Drive   copies the client profiles to your Proton Drive
+  Tailscale      joins your tailnet as exit node / subnet router
+
+Open the setup menu now? You can also open it later with:
+  bash ${menu}" "${r}" "${c}"; then
+    exec env PIVPN_REBOOT_PENDING=1 bash "${menu}"
+  fi
+}
+
 displayFinalMessage() {
   # Ensure that cached writes reach persistent storage
   echo "::: Flushing writes to disk..."
@@ -4130,6 +4159,15 @@ If you run into any issue, please read all our documentation carefully.
 All incomplete posts or bug reports will be ignored or deleted.
 
 Thank you for using PiVPN." "${r}" "${c}"
+
+  # Started from the setup menu (./install.sh): go back to it; it offers the
+  # reboot when you leave it
+  if [[ -n "${PIVPN_SETUP_MENU}" ]]; then
+    echo "::: Returning to the setup menu..."
+    return
+  fi
+
+  offerExtras
 
   if whiptail \
     --title "Reboot" \

@@ -26,6 +26,7 @@ jobs:
           find scripts/ -type f -print0 | xargs -0 shellcheck -x
           shellcheck extras/proton-drive-sync/pivpn-proton-sync
           shellcheck extras/duckdns-update/duckdns-update
+          shellcheck -x extras/setup.sh extras/lib/common.sh extras/*/setup.sh
 
       - name: Shell style (shfmt)
         run: |
@@ -34,3 +35,4 @@ jobs:
           find scripts/ -type f -print0 | xargs -0 shfmt -d -i 2 -ci -sr -bn
           shfmt -d -i 2 -ci -sr -bn extras/proton-drive-sync/pivpn-proton-sync
           shfmt -d -i 2 -ci -sr -bn extras/duckdns-update/duckdns-update
+          shfmt -d -i 2 -ci -sr -bn extras/setup.sh extras/lib/common.sh extras/*/setup.sh

@@ -31,7 +31,6 @@ TOKEN=""
 GOTIFY_URL=""
 GOTIFY_TOKEN=""
 GOTIFY_ON=0
-CURRENT_TOKEN=""
 
 # Results of the checks along the way
 CHECKED_IP=""
@@ -97,7 +96,6 @@ loadCurrent() {
   # The example values from the template don't count
   [[ "${DOMAINS}" == "yourname" ]] && DOMAINS=""
   [[ "${TOKEN}" == "00000000-0000-0000-0000-000000000000" ]] && TOKEN=""
-  CURRENT_TOKEN="${TOKEN}"
 
   if [[ -n "${GOTIFY_URL}" && -n "${GOTIFY_TOKEN}" ]]; then
     GOTIFY_ON=1
@@ -191,10 +189,11 @@ at the top of the page and looks like a1b2c3d4-e5f6-7890-abcd-ef1234567890.
 Paste it with Shift+Insert, Ctrl+Shift+V or a right click, depending on \
 your terminal. It stays hidden while you type."
 
-  if [[ -n "${CURRENT_TOKEN}" ]]; then
+  # The saved token, or the one entered earlier in this run
+  if [[ -n "${TOKEN}" ]]; then
     text+="
 
-Leave it empty to keep the current token ($(tail4 "${CURRENT_TOKEN}"))."
+Leave it empty to keep the current token ($(tail4 "${TOKEN}"))."
   fi
 
   while true; do
@@ -202,8 +201,7 @@ Leave it empty to keep the current token ($(tail4 "${CURRENT_TOKEN}"))."
     value="${value//[[:space:]]/}"
 
     if [[ -z "${value}" ]]; then
-      if [[ -n "${CURRENT_TOKEN}" ]]; then
-        TOKEN="${CURRENT_TOKEN}"
+      if [[ -n "${TOKEN}" ]]; then
         return 0
       fi
 

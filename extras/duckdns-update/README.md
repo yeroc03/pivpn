@@ -19,6 +19,23 @@ changes or when updates start or stop failing.
 
 Not installed by the PiVPN installer.
 
+## Guided setup
+
+```bash
+./install.sh                         # in your PiVPN clone: the setup menu, then "DuckDNS"
+extras/duckdns-update/setup.sh       # or this one directly (uses sudo itself)
+```
+
+It asks for your DuckDNS subdomain(s) (prefilled from PiVPN's public DNS
+name when that is a DuckDNS name) and your token, checks them with DuckDNS
+right away (a refused name or token sends you back to fix it), optionally
+sets up Gotify alerts and sends a test message, shows a summary, then
+installs everything below, starts the timer and runs the first update. If
+inadyn or ddclient is running, it offers to disable it.
+
+Run it again to change the settings: the current ones are filled in, and an
+empty token keeps the current one.
+
 ## Files
 
 | File | Install to |
@@ -28,9 +45,10 @@ Not installed by the PiVPN installer.
 | `duckdns-update.timer` | `/etc/systemd/system/` |
 | `duckdns-update.conf` | `/etc/duckdns-update.conf` (mode 600, root) |
 
-## Setup
+## Manual setup
 
-From the top folder of your PiVPN clone:
+The guided setup does this for you. By hand, from the top folder of your
+PiVPN clone:
 
 ```bash
 cd extras/duckdns-update

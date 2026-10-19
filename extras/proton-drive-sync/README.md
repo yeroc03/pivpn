@@ -27,6 +27,39 @@ but anyone who can sign in to that Proton account can use your VPN, so keep
 two-factor authentication on it (see the blueprint for a least-privilege
 setup with a separate Proton account).
 
+## Guided setup
+
+```bash
+./install.sh                          # in your PiVPN clone: the setup menu, then "Proton Drive"
+extras/proton-drive-sync/setup.sh     # or this one directly (uses sudo itself)
+```
+
+It walks through everything in [Manual setup](#manual-setup):
+
+1. **The CLI.** If `proton-drive` is missing (or doesn't run), it downloads
+   the newest Linux build listed in Proton's release list
+   (`proton.me/download/drive/cli/version.json`), checks it against Proton's
+   SHA-512 checksum and installs it to `/usr/local/bin`. When a newer version
+   exists than the one installed, it offers the update. A CPU without AVX2
+   (Proxmox's default CPU type) is detected and explained.
+2. **The session store.** A GPG key without passphrase and a `pass` store for
+   the PiVPN install user, then a check that a secret can be stored and read
+   back unattended. If that user already has a `pass` store of their own,
+   it is left alone and a separate one is used
+   (`~/.local/share/pivpn-proton-sync/password-store`).
+3. **Sign-in.** Proton's CLI has no password login: it prints a link, which
+   the setup shows together with a QR code. Open it on any device, sign in
+   (with 2FA) and approve; the setup continues by itself. If the user is
+   already signed in, you can keep that session or sign in again.
+4. **The folder.** The default (`/my-files/PiVPN/<hostname>`, or the current
+   one), a folder picked in a browser of your Drive (including folders
+   shared with you, and creating new ones), or a typed path.
+5. Whether revoked clients' profiles go to the Proton Drive trash, a summary,
+   then it installs the files below, enables the units and runs the first
+   sync.
+
+Run it again to change the folder or the account.
+
 ## Files
 
 | File | Install to |
@@ -40,7 +73,10 @@ setup with a separate Proton account).
 The units are templates: the instance name is the PiVPN install user, and
 they assume its home is `/home/<user>`.
 
-## Setup (as root, with `USER_=` your PiVPN install user)
+## Manual setup
+
+The guided setup does this for you. By hand, as root, with `USER_=` your
+PiVPN install user:
 
 ```bash
 USER_=yeroc03
@@ -85,6 +121,7 @@ If the log says `not signed in to Proton Drive`, repeat step 3.
 | `PIVPN_SYNC_PRUNE` | `1` | Trash remote files with no local copy |
 | `PROTON_DRIVE_BIN` | `proton-drive` | CLI to run |
 | `PROTON_DRIVE_CREDENTIALS_STORE` | `pass` (set in the unit) | CLI session store |
+| `PASSWORD_STORE_DIR` | `~/.password-store` | The `pass` store holding the session (the guided setup sets it when it uses a separate store) |
 
 To upload into a folder another Proton account shared with you, set
 `PIVPN_SYNC_REMOTE` to its `/shared-with-me/...` path.

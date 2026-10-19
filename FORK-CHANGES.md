@@ -35,6 +35,7 @@ OpenVPN-specific ones again against Ubuntu 26.04's OpenVPN 2.7.0 build; see
 | 12 | CI | Fork maintenance | Travis is gone; release jobs would run on the fork | `0fd1373` |
 | 13 | Installer can only install from a fixed git URL | Self-hosted or private repositories | Fork tied to GitHub | `1077820`, `9fcdc4f` |
 | 14 | `setupVars.conf` unreadable by the installing user | Installer run as a normal user (the usual way) | Second protocol not detected; dual `pivpn` command not linked | `cf9c898` |
+| 15 | Extras set up by hand, file by file | Anyone using `extras/` | Several manual steps, tokens typed into config files | setup menu (this change) |
 
 A and B are the two problems already written up in this project
 (`pivpn-easyrsa-tar-fix.md`, `pivpn-openvpn-cipher-fix.md`). Everything from 1
@@ -274,19 +275,57 @@ run skipped the Update/Repair/Reconfigure menu. Found while testing route 13 as
 a normal user; the file is now installed with mode 0644 again (settings only,
 no keys).
 
+### 15. Setup menu and guided setups for the extras
+
+The extras needed several manual steps each (copy files, edit a config file
+with the tokens, enable units, and for Proton Drive download and verify the
+CLI, create a GPG key and a `pass` store, sign in). Now:
+
+- **`./install.sh` opens a setup menu** when run in a terminal without
+  options: PiVPN, DuckDNS, Proton Drive and Tailscale, each with its current
+  state (installed, failing, not set up). *PiVPN* runs the installer and
+  returns to the menu; the menu offers the reboot when you leave it. With
+  options (`--unattended`, `--no-menu`, ...) or without a terminal it goes
+  straight to the installer, as before. After an interactive install that
+  didn't start from the menu, the installer offers to open it.
+- **Guided setups** (`extras/*/setup.sh`, whiptail, sized like the
+  installer's dialogs, and fitting an 80x24 terminal) ask for the
+  credentials and choices, check them on the spot (DuckDNS update, Gotify
+  test message, Proton sign-in, Tailscale sign-in), show a summary before
+  changing anything, and offer "Go back" when cancelled halfway. Run again,
+  they start from the current settings.
+- **Proton Drive:** the CLI is installed (or updated) from Proton's release
+  list with its SHA-512 checked; sign-in shows Proton's approval link and a
+  QR code; the remote folder can be picked in a browser of the Drive
+  (including shared folders) or typed; an existing personal `pass` store is
+  left alone.
+- **Tailscale** (new extra): installs from `pkgs.tailscale.com`; exit node,
+  subnet router (LAN prefilled), Tailscale SSH and tailnet DNS as checkboxes;
+  sign-in with link/QR or auth key (passed through a root-only file); it
+  then reports whether the routes are approved and whether key expiry is on.
+
+Shared helpers are in `extras/lib/common.sh`. Tested by driving every dialog
+in a pseudo-terminal (80x24 and 140x50) against stand-ins for `systemctl`,
+`curl`, the Proton Drive CLI and `tailscale`, with the real `gpg`, `pass`,
+`runuser`, sync script and DuckDNS updater; not yet on a real systemd boot.
+
 ---
 
 ## Extras
 
-Optional add-ons in `extras/`, not used by the installer (setup in each
-folder's `README.md`):
+Optional add-ons in `extras/`, not used by the installer. Each has a guided
+setup (`setup.sh` in its folder), reachable from the setup menu that
+`./install.sh` opens (see 15):
 
-- `extras/proton-drive-sync/`: mirrors `~/ovpns` and `~/configs` to Proton
-  Drive with the official CLI when PiVPN changes them; revoked clients' files
-  go to the Proton trash.
 - `extras/duckdns-update/`: a systemd timer that updates a DuckDNS name every 5
   minutes using DuckDNS's own IP detection, with optional Gotify alerts on an
   IP change, on failure and on recovery.
+- `extras/proton-drive-sync/`: mirrors `~/ovpns` and `~/configs` to Proton
+  Drive with the official CLI when PiVPN changes them; revoked clients' files
+  go to the Proton trash.
+- `extras/tailscale/`: installs Tailscale and joins the tailnet, optionally as
+  exit node and/or subnet router, with IP forwarding and Tailscale's UDP
+  setting for routers.
 
 ---
 

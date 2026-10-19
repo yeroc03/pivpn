@@ -43,10 +43,28 @@ git clone https://github.com/yeroc03/pivpn.git pivpn
 
 cd pivpn
 git checkout master        # optional: any branch, tag or commit
-./install.sh               # interactive
+./install.sh               # interactive: opens the setup menu
 ```
 
-What happens:
+In a terminal and without options, `./install.sh` opens the **setup menu**:
+
+```
+PiVPN         VPN server: WireGuard + OpenVPN
+DuckDNS       Dynamic DNS: on, every 5 minutes
+Proton Drive  Profile sync: on (yeroc03)
+Tailscale     Tailnet: connected
+Exit          Leave the setup
+```
+
+Each line shows whether that part is set up; choosing it installs it, or
+changes its settings. *PiVPN* runs the installer described here and comes
+back to the menu afterwards (the menu offers the reboot when you leave it);
+the other three are the [extras](#extras). With any option (for example
+`--unattended`, or `--no-menu` for the plain interactive installer), and
+when there is no terminal, `./install.sh` goes straight to the PiVPN
+installer as before.
+
+What happens when PiVPN installs:
 
 - The installer notices it is running from a clone and installs that clone's
   **last commit**. It prints the branch and commit it is using.
@@ -211,10 +229,21 @@ Removing the last one also removes the scripts. To reinstall later, run
 
 ## Extras
 
-Optional add-ons in `extras/`, not installed by the installer; each folder has
-a `README.md` with setup steps:
+Optional add-ons in `extras/`, not installed by the PiVPN installer. Each has
+a guided setup in the same whiptail style as the installer, which you reach
+from the setup menu (`./install.sh` in your clone) or run directly; they ask
+for what they need (tokens, sign-ins, folders), check it, show a summary
+before changing anything, and can be run again to change the settings. Run
+them as your normal user: they use `sudo` themselves.
 
-| Folder | What it does |
-|---|---|
-| `extras/duckdns-update/` | Keeps your DuckDNS name pointing at your home IP (systemd timer, optional Gotify alerts) |
-| `extras/proton-drive-sync/` | Mirrors the client profiles to Proton Drive |
+| Extra | Guided setup | What it does |
+|---|---|---|
+| DuckDNS | `extras/duckdns-update/setup.sh` | Keeps your DuckDNS name pointing at your home IP (systemd timer, optional Gotify alerts) |
+| Proton Drive | `extras/proton-drive-sync/setup.sh` | Installs the Proton Drive CLI if needed, signs in, and mirrors the client profiles to a Proton Drive folder you choose |
+| Tailscale | `extras/tailscale/setup.sh` | Installs Tailscale and joins your tailnet, optionally as exit node and/or subnet router for your LAN |
+
+Each folder's `README.md` has the details, and the manual steps.
+
+After an interactive install that didn't start from the menu (for example
+the standalone installer), PiVPN offers to open the menu; it is then
+`bash /usr/local/src/pivpn/extras/setup.sh`.
